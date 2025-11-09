@@ -4,13 +4,15 @@ namespace App\Http\Controllers\Users;
 
 
 use App\Http\Controllers\Controller;
-use App\Http\Models\User;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Hash;
+
 use Illuminate\Support\Str;
 
 
@@ -44,7 +46,7 @@ class AuthController extends Controller
 
         //3 - Verificar se a senha está correta
         //4 - Se algo estiver errado retornar para o front o erro
-        if(!user || !Hash::check($data['password'], $user->password)) {
+        if(!$user || !Hash::check($data['password'], $user->password)) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
