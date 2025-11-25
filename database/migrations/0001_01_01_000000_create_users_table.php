@@ -17,6 +17,8 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+            // Perfil/role do usuário (padrão: client). Usado para verificar permissões como admin, client, etc.
+            $table->string('role')->default('client')->index();
             $table->rememberToken();
             $table->timestamps();
         });
