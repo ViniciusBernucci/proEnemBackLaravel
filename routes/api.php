@@ -4,14 +4,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Users\AuthController;
 
-Route::get('/user', function (Request $request) {
-    return $request->user();
-})->middleware('auth:sanctum');
 
-
-/*
-Route::middleware('auth:sanctum')
-    ->get('/users', [UserController::class, 'getUser']);*/
+//Route::get('/user', [UserController::class, 'getUser']);
 
 Route:://middleware('auth:sanctum')
   prefix('auth')->group(function () {
@@ -19,10 +13,10 @@ Route:://middleware('auth:sanctum')
     Route::post('/login', [AuthController::class, 'login']);
 
   // Finalidade: Fluxo “Esqueci minha senha”.
-    Route::post('password/email', [PasswordResetController::class, 'sendResetLinkEmail']);
+  //Route::post('password/email', [PasswordResetController::class, 'sendResetLinkEmail']);
 
   // Finalidade: Confirmar a redefinição do endpoint /password/email
-    Route::post('password/reset', [PasswordResetController::class, 'reset']);
+  //Route::post('password/reset', [PasswordResetController::class, 'reset']);
 });
 
 
