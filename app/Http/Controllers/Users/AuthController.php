@@ -129,7 +129,7 @@ class AuthController extends Controller
             //$user->currentAccessToken()?->delete();
 
             //revoga todos os tokens do usuário
-            $user->tokens()?->delete();
+            //$user->tokens()?->delete();
         }
 
         // Não há mais lógica de refresh token/cookie customizado
