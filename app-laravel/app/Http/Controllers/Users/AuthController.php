@@ -21,17 +21,6 @@ class AuthController extends Controller
 {
     public function __construct(){}
 
-    public function register(Request $request){
-
-        $usuario = $request->input();
-
-        //Esse registro vem da hotmart -> Vide documentacao de fluxo de usuário
-
-        //TO_DO -> Estudar API da Hotmart (Ou outro checkout) 
-        // para implementar o Registro de usuário
-
-    }
-
     public function login(Request $request){
 
         //O que precisa para efetuar um login?
