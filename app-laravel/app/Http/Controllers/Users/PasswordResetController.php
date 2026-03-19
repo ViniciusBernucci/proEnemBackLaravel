@@ -22,6 +22,7 @@ class PasswordResetController extends Controller
 
         // O broker localiza o usuário, gera o token, salva em 'password_reset_tokens' 
         // e dispara a ResetPasswordNotification (e-mail) nativa.
+        //teste
         $status = Password::broker()->sendResetLink(
             $request->only('email')
         );
