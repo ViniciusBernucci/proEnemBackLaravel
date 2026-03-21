@@ -21,17 +21,6 @@ class AuthController extends Controller
 {
     public function __construct(){}
 
-    public function register(Request $request){
-
-        $usuario = $request->input();
-
-        //Esse registro vem da hotmart -> Vide documentacao de fluxo de usuário
-
-        //TO_DO -> Estudar API da Hotmart (Ou outro checkout) 
-        // para implementar o Registro de usuário
-
-    }
-
     public function login(Request $request){
 
         //O que precisa para efetuar um login?
@@ -138,11 +127,11 @@ class AuthController extends Controller
             //revoga todos os tokens do usuário
             $tokenscount = $user->tokens()->count();
             $user->tokens()?->delete();
-        }else {
+        } else {
             Log::warning('[LOGOUT] - Logout chmado sem usuário autenticado',
             [
                 'ip' => $request->ip()
-            ])
+            ]);
         }
 
         // Não há mais lógica de refresh token/cookie customizado
