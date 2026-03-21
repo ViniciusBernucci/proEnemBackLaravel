@@ -60,23 +60,11 @@ class User extends Authenticatable
     ];
 
     /**
-     * Boot model to set default values.
-     */
-    protected static function booted(): void
-    {
-        static::creating(function (self $user) {
-            if (empty($user->role)) {
-                $user->role = self::ROLE_CLIENT;
-            }
-        });
-    }
-
-    /**
      * Verifica se o usuário é admin.
      */
     public function isAdmin(): bool
     {
-        return $this->role === self::ROLE_ADMIN;
+        return $this->role?->name === self::ROLE_ADMIN;
     }
 
     /**
@@ -84,7 +72,7 @@ class User extends Authenticatable
      */
     public function isClient(): bool
     {
-        return $this->role === self::ROLE_CLIENT;
+        return $this->role?->name === self::ROLE_CLIENT;
     }
 
     /**
@@ -92,6 +80,6 @@ class User extends Authenticatable
      */
     public function scopeRole($query, string $role)
     {
-        return $query->where('role', $role);
+        return $query->whereHas('role', fn ($q) => $q->where('name', $role));
     }
 }
