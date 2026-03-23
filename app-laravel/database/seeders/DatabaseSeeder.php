@@ -24,6 +24,8 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             TopicosSeeder::class,
+            MatematicaSeeder::class,
+            CienciasNaturezaSeeder::class,
         ]);
     }
 }
