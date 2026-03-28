@@ -1,9 +1,9 @@
 ---
 name: planner
 description: >
-  Analisa o projeto e cria planos técnicos separados para backend e frontend
-  antes de qualquer implementação. Gera também os prompts prontos para acionar
-  cada agente. Use SEMPRE como primeiro passo. Não escreve código.
+  Analisa o projeto Angular + Laravel e cria planos técnicos separados para
+  backend e frontend antes de qualquer implementação. Gera também os prompts
+  prontos para acionar cada agente. Use SEMPRE como primeiro passo. Não escreve código.
 tools: Read, Write, Glob, Grep
 model: haiku
 permissionMode: plan
@@ -16,8 +16,8 @@ Não escreva código. Não crie outros arquivos além dos planos.
 
 ## O que fazer
 
-1. Leia o CLAUDE.md
-2. Use Glob para mapear a estrutura do projeto
+1. Leia o CLAUDE.md (se existir)
+2. Use Glob para mapear a estrutura do projeto (src/app/features/, app/Http/Controllers/, routes/api.php)
 3. Leia no máximo 5 arquivos relevantes para a tarefa
 4. Crie os três arquivos abaixo
 
@@ -33,20 +33,23 @@ Data: {data}
 {1 linha}
 
 ## Arquivos a criar
-- {caminho}: {responsabilidade}
+- `app/Http/Controllers/{Dominio}/{NomeController}.php`: {responsabilidade}
+- `app/Models/{Nome}.php`: {se necessário}
 
 ## Arquivos a modificar
-- {caminho}: {o que muda}
+- `routes/api.php`: adicionar rota(s) {METHOD} /api/{recurso}
 
-## Fluxo
-POST {arquivo_form} → {arquivo_process}
-Validar: {campos}
-Salvar: tabela `{tabela}`, campos ({colunas})
-Sucesso: redirect → {destino}
-Erro: redirect → {origem} com $_SESSION['erros']
+## Fluxo da API
+Request → FormRequest (validação) → Controller → Model/Service → JsonResponse
 
-## Validações
-- {campo}: {regra exata}
+Endpoint(s):
+- {METHOD} /api/{recurso} → {Controller}@{método}
+  Body: { {campos} }
+  Sucesso: HTTP {código} + { data: {...} }
+  Erro: HTTP {código} + { message: '...' }
+
+## Validações (FormRequest)
+- {campo}: {regra Laravel exata, ex: required|string|max:255}
 
 ## Dúvidas
 - {pergunta, se houver | "nenhuma"}
@@ -69,21 +72,21 @@ Data: {data}
 {1 linha}
 
 ## Arquivos a criar
-- {caminho}: {responsabilidade}
+- `src/app/features/{modulo}/{componente}/`: componente Angular standalone
+- `src/app/core/services/{nome}.service.ts`: serviço HTTP (se necessário)
 
 ## Arquivos a modificar
-- {caminho}: {o que muda}
+- `src/app/app.routes.ts`: adicionar rota
 
-## Campos do formulário
-| name | type | label | obrigatório |
-|------|------|-------|-------------|
-| {name} | {type} | {label} | {sim/não} |
+## Campos do formulário (se houver)
+| formControlName | type | label | validações Angular |
+|-----------------|------|-------|-------------------|
+| {name} | {type} | {label} | {Validators.required, etc.} |
 
 ## Feedback ao usuário
-- Sucesso: exibir $_SESSION['sucesso']
-- Erro geral: exibir $_SESSION['erros']['geral']
-- Erro por campo: exibir $_SESSION['erros']['{name}'] próximo ao campo
-- Repopular: value="<?= htmlspecialchars($_SESSION['antigo']['{name}'] ?? '') ?>"
+- Sucesso: toast / snackbar + redirecionamento
+- Erro de validação: mensagem inline no campo com FormControl.errors
+- Erro de API: exibir message do response no template
 
 ## Dúvidas
 - {pergunta, se houver | "nenhuma"}
