@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Cronogramas;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Cronogramas\StoreCronogramaRequest;
 use App\Models\Cronograma;
+use App\Models\Disciplina;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 
@@ -18,8 +19,20 @@ class CronogramaController extends Controller
         try {
             $cronogramas = auth()->user()->cronogramas()->orderBy('created_at', 'desc')->get();
 
+            // Carrega mapa de id => nome para resolver disciplinas sem consulta extra por cronograma
+            $disciplinasMap = Disciplina::pluck('nome', 'id');
+
+            $data = $cronogramas->map(function ($cronograma) use ($disciplinasMap) {
+                $ids = $cronograma->disciplinas_selecionadas ?? [];
+                $nomes = array_values(array_filter(
+                    array_map(fn($id) => $disciplinasMap[$id] ?? null, $ids)
+                ));
+
+                return [...$cronograma->toArray(), 'disciplinas_selecionadas' => $nomes];
+            });
+
             return response()->json([
-                'data' => $cronogramas,
+                'data' => $data,
             ], 200);
         } catch (\Exception $e) {
             Log::error('[CRONOGRAMAS] Erro ao listar cronogramas', [

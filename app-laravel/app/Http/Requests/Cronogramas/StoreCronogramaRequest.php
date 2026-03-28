@@ -3,7 +3,6 @@
 namespace App\Http\Requests\Cronogramas;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class StoreCronogramaRequest extends FormRequest
 {
@@ -33,25 +32,7 @@ class StoreCronogramaRequest extends FormRequest
             'estudar_feriados' => ['required', 'boolean'],
             'tirar_ferias' => ['required', 'boolean'],
             'disciplinas_selecionadas' => ['required', 'array', 'min:1'],
-            'disciplinas_selecionadas.*' => [
-                'string',
-                'max:100',
-                Rule::in([
-                    'Matemática',
-                    'Língua Portuguesa',
-                    'Literatura',
-                    'Inglês',
-                    'Espanhol',
-                    'Redação',
-                    'Física',
-                    'Química',
-                    'Biologia',
-                    'História',
-                    'Geografia',
-                    'Filosofia',
-                    'Sociologia',
-                ])
-            ],
+            'disciplinas_selecionadas.*' => ['integer', 'exists:disciplinas,id'],
             'minutos_estudo_por_dia' => ['required', 'integer', 'min:50', 'max:720'],
         ];
     }
@@ -84,9 +65,8 @@ class StoreCronogramaRequest extends FormRequest
             'disciplinas_selecionadas.required' => 'Selecione ao menos uma disciplina.',
             'disciplinas_selecionadas.array' => 'As disciplinas selecionadas devem ser um array.',
             'disciplinas_selecionadas.min' => 'Selecione ao menos uma disciplina.',
-            'disciplinas_selecionadas.*.string' => 'O nome da disciplina deve ser uma string.',
-            'disciplinas_selecionadas.*.max' => 'O nome da disciplina deve ter no máximo 100 caracteres.',
-            'disciplinas_selecionadas.*.in' => 'A disciplina selecionada não é válida.',
+            'disciplinas_selecionadas.*.integer' => 'O ID da disciplina deve ser um número inteiro.',
+            'disciplinas_selecionadas.*.exists' => 'A disciplina selecionada não existe.',
             'minutos_estudo_por_dia.required' => 'Informe os minutos de estudo por dia.',
             'minutos_estudo_por_dia.integer' => 'Os minutos de estudo devem ser um número inteiro.',
             'minutos_estudo_por_dia.min' => 'Os minutos de estudo devem ser no mínimo 50.',

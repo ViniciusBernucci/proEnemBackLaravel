@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Users\AuthController;
 use App\Http\Controllers\Users\UserController;
 use App\Http\Controllers\Cronogramas\CronogramaController;
+use App\Http\Controllers\Disciplinas\DisciplinaController;
 use App\Http\Controllers\Auth\SocialAuthController;
 
 // ── Autenticação (rotas públicas) ─────────────────────────────────────────────
@@ -15,6 +16,9 @@ Route::prefix('auth')->group(function () {
     Route::get('/google/redirect', [SocialAuthController::class, 'redirectToGoogle']);
     Route::get('/google/callback', [SocialAuthController::class, 'handleGoogleCallback']);
 });
+
+// ── Rotas públicas ────────────────────────────────────────────────────────────
+Route::get('/disciplinas', [DisciplinaController::class, 'index']);
 
 // ── Rotas protegidas (requer token Sanctum) ───────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {

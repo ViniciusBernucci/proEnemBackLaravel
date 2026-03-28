@@ -21,7 +21,7 @@ use Illuminate\Http\JsonResponse;
  * permite reusar o algoritmo em outros contextos (Artisan command,
  * job assíncrono, etc).
  */
-class CronogramaController extends Controller
+class CalculoCronogramaController extends Controller
 {
     public function __construct(
         private readonly CronogramaService $cronogramaService

@@ -111,4 +111,4 @@ class GerarCronogramaRequest extends FormRequest
             'horas_por_dia.between'      => 'As horas por dia devem estar entre 1 e 12.',
         ];
     }
-}s
+}
