@@ -25,6 +25,7 @@ class StoreCronogramaRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'nome' => ['required', 'string', 'max:100'],
             'data_inicio' => ['required', 'date', 'after_or_equal:today'],
             'data_fim' => ['required', 'date', 'after:data_inicio'],
             'dias_semana' => ['required', 'array', 'min:1'],
@@ -63,6 +64,9 @@ class StoreCronogramaRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'nome.required' => 'O nome do cronograma é obrigatório.',
+            'nome.string' => 'O nome do cronograma deve ser um texto.',
+            'nome.max' => 'O nome do cronograma deve ter no máximo 100 caracteres.',
             'data_inicio.required' => 'A data de início é obrigatória.',
             'data_inicio.date' => 'A data de início deve ser uma data válida.',
             'data_inicio.after_or_equal' => 'A data de início deve ser hoje ou uma data futura.',

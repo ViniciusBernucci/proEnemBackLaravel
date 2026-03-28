@@ -11,6 +11,29 @@ use Illuminate\Support\Facades\Log;
 class CronogramaController extends Controller
 {
     /**
+     * Lista os cronogramas do usuário autenticado.
+     */
+    public function index(): JsonResponse
+    {
+        try {
+            $cronogramas = auth()->user()->cronogramas()->orderBy('created_at', 'desc')->get();
+
+            return response()->json([
+                'data' => $cronogramas,
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('[CRONOGRAMAS] Erro ao listar cronogramas', [
+                'error' => $e->getMessage(),
+                'user_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'message' => 'Erro ao listar cronogramas',
+            ], 500);
+        }
+    }
+
+    /**
      * Cria um novo cronograma de estudos para o usuário autenticado.
      */
     public function store(StoreCronogramaRequest $request): JsonResponse
@@ -18,10 +41,10 @@ class CronogramaController extends Controller
         try {
             $validated = $request->validated();
 
-            // Cria o cronograma sem user_id (protegido em $guarded)
-            $cronograma = Cronograma::create($validated);
+            // Instancia o cronograma com os dados validados
+            $cronograma = new Cronograma($validated);
 
-            // Associa o cronograma ao usuário autenticado de forma segura
+            // Associa o cronograma ao usuário autenticado e salva no banco
             $cronograma->user_id = auth()->id();
             $cronograma->save();
 
@@ -34,6 +57,7 @@ class CronogramaController extends Controller
                 'data' => [
                     'id' => $cronograma->id,
                     'user_id' => $cronograma->user_id,
+                    'nome' => $cronograma->nome,
                     'data_inicio' => $cronograma->data_inicio->format('Y-m-d'),
                     'data_fim' => $cronograma->data_fim->format('Y-m-d'),
                     'dias_semana' => $cronograma->dias_semana,
@@ -56,6 +80,40 @@ class CronogramaController extends Controller
 
             return response()->json([
                 'message' => 'Erro ao criar cronograma',
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove um cronograma do usuário autenticado.
+     */
+    public function destroy(Cronograma $cronograma): JsonResponse
+    {
+        if ($cronograma->user_id !== auth()->id()) {
+            return response()->json([
+                'message' => 'Ação não autorizada.',
+            ], 403);
+        }
+
+        try {
+            $cronograma->delete();
+
+            Log::info('[CRONOGRAMAS] Cronograma excluído', [
+                'cronograma_id' => $cronograma->id,
+                'user_id' => auth()->id(),
+            ]);
+
+            return response()->json(null, 204);
+
+        } catch (\Exception $e) {
+            Log::error('[CRONOGRAMAS] Erro ao excluir cronograma', [
+                'error' => $e->getMessage(),
+                'cronograma_id' => $cronograma->id,
+                'user_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'message' => 'Erro ao excluir cronograma.',
             ], 500);
         }
     }

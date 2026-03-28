@@ -123,18 +123,15 @@ class AuthController extends Controller
         $user = $request->user();
 
         if ($user) {
-        
-            //revoga todos os tokens do usuário
-            $tokenscount = $user->tokens()->count();
-            $user->tokens()?->delete();
+            // Revoga apenas o token da sessão atual
+            $user->currentAccessToken()->delete();
         } else {
-            Log::warning('[LOGOUT] - Logout chmado sem usuário autenticado',
+            Log::warning('[LOGOUT] - Logout chamado sem usuário autenticado',
             [
                 'ip' => $request->ip()
             ]);
         }
 
-        // Não há mais lógica de refresh token/cookie customizado
-        return response()->json(['ok' => true], 200);
+        return response()->json(['message' => 'Logout realizado com sucesso'], 200);
     }
 }

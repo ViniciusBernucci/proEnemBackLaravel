@@ -16,6 +16,7 @@ class Cronograma extends Model
      * @var array<int,string>
      */
     protected $fillable = [
+        'nome',
         'data_inicio',
         'data_fim',
         'dias_semana',

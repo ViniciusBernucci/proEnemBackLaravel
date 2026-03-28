@@ -26,7 +26,9 @@ class User extends Authenticatable
         'username',
         'email',
         'password',
-        'role_id'
+        'role_id',
+        'google_id',
+        'email_verified_at',
     ];
 
     public function detail()
