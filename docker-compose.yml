@@ -1,0 +1,59 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: .dockerfile
+    image: proenem_app
+    container_name: proenem_app
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./app-laravel:/var/www
+    env_file:
+      - ./app-laravel/.env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - laravel_network
+
+  web:
+    image: nginx:latest
+    container_name: aguardco_nginx
+    restart: unless-stopped
+    ports:
+      - "9080:80" # Alterado para 9080:80
+    volumes:
+      - ./app-laravel:/var/www
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    networks:
+      - laravel_network
+
+  db:
+    image: postgres:16-alpine
+    container_name: proenem_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: proenem
+      POSTGRES_USER: proenem
+      POSTGRES_PASSWORD: secret
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - laravel_network
+
+volumes:
+  dbdata:
+
+networks:
+  laravel_network:
