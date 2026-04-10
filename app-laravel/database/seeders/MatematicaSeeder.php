@@ -9,8 +9,6 @@ class MatematicaSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('matematica')->truncate();
-
         $area = 'Matemática e suas Tecnologias';
 
         $modulos = [
@@ -93,6 +91,10 @@ class MatematicaSeeder extends Seeder
             ];
         }, $assuntos);
 
-        DB::table('matematica')->insert($records);
+        $existing = DB::table('matematica')->pluck('topico')->toArray();
+        $newRecords = array_values(array_filter($records, fn($r) => !in_array($r['topico'], $existing)));
+        if (!empty($newRecords)) {
+            DB::table('matematica')->insert($newRecords);
+        }
     }
 }

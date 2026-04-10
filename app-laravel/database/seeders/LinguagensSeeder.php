@@ -9,8 +9,6 @@ class LinguagensSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('linguagens')->truncate();
-
         $area = 'Linguagens, Códigos e suas Tecnologias';
 
         $modulos = [
@@ -87,6 +85,10 @@ class LinguagensSeeder extends Seeder
             ];
         }, $assuntos);
 
-        DB::table('linguagens')->insert($records);
+        $existing = DB::table('linguagens')->pluck('topico')->toArray();
+        $newRecords = array_values(array_filter($records, fn($r) => !in_array($r['topico'], $existing)));
+        if (!empty($newRecords)) {
+            DB::table('linguagens')->insert($newRecords);
+        }
     }
 }

@@ -9,8 +9,6 @@ class TopicosSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('ciencias_humanas')->truncate();
-
         $area = 'Ciências Humanas e suas Tecnologias';
 
         $modulos = [
@@ -109,6 +107,10 @@ class TopicosSeeder extends Seeder
             ];
         }, $assuntos);
 
-        DB::table('ciencias_humanas')->insert($records);
+        $existing = DB::table('ciencias_humanas')->pluck('topico')->toArray();
+        $newRecords = array_values(array_filter($records, fn($r) => !in_array($r['topico'], $existing)));
+        if (!empty($newRecords)) {
+            DB::table('ciencias_humanas')->insert($newRecords);
+        }
     }
 }

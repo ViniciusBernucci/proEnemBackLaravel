@@ -5,6 +5,8 @@ namespace Database\Seeders;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Database\Seeders\LinguagensSeeder;
+use Database\Seeders\DisciplinasSeeder;
 
 class DatabaseSeeder extends Seeder
 {
@@ -26,6 +28,8 @@ class DatabaseSeeder extends Seeder
             TopicosSeeder::class,
             MatematicaSeeder::class,
             CienciasNaturezaSeeder::class,
+            LinguagensSeeder::class,
+            DisciplinasSeeder::class,
         ]);
     }
 }

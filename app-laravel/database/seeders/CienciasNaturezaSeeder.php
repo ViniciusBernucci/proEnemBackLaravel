@@ -9,8 +9,6 @@ class CienciasNaturezaSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('ciencias_natureza')->truncate();
-
         $area = 'Ciências da Natureza e suas Tecnologias';
 
         $modulos = [
@@ -117,6 +115,10 @@ class CienciasNaturezaSeeder extends Seeder
             ];
         }, $assuntos);
 
-        DB::table('ciencias_natureza')->insert($records);
+        $existing = DB::table('ciencias_natureza')->pluck('topico')->toArray();
+        $newRecords = array_values(array_filter($records, fn($r) => !in_array($r['topico'], $existing)));
+        if (!empty($newRecords)) {
+            DB::table('ciencias_natureza')->insert($newRecords);
+        }
     }
 }

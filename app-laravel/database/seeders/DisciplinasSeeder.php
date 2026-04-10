@@ -15,14 +15,9 @@ class DisciplinasSeeder extends Seeder
      */
     public function run()
     {
-        // 1. Limpar `disciplina_id` das tabelas para poder resetar a tabela `disciplinas`
-        DB::table('ciencias_humanas')->update(['disciplina_id' => null]);
-        DB::table('ciencias_natureza')->update(['disciplina_id' => null]);
-        DB::table('matematica')->update(['disciplina_id' => null]);
-        DB::table('linguagens')->update(['disciplina_id' => null]);
-
-        // Deletar as antigas inserções incorretas
-        DB::table('disciplinas')->delete();
+        if (DB::table('disciplinas')->count() > 0) {
+            return;
+        }
 
         $disciplinasImagem = [
             'Matemática'        => 'Matemática e suas Tecnologias',

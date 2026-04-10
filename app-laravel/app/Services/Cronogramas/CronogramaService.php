@@ -7,6 +7,7 @@ use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * ============================================================================
@@ -111,6 +112,11 @@ class CronogramaService
      */
     private function getFeriadosNacionais(Carbon $inicio, Carbon $fim): Collection
     {
+        Log::info('[CronogramaService] getFeriadosNacionais :: entrada', [
+            'inicio' => $inicio->format('Y-m-d'),
+            'fim'    => $fim->format('Y-m-d'),
+        ]);
+
         $feriados = collect();
 
         // Itera por cada ano que o período abrange
@@ -147,11 +153,18 @@ class CronogramaService
         }
 
         // Filtra apenas os que caem dentro do período do cronograma
-        return $feriados
+        $resultado = $feriados
             ->map(fn(string $data) => Carbon::parse($data))
             ->filter(fn(Carbon $data) => $data->between($inicio, $fim))
             ->map(fn(Carbon $data) => $data->format('Y-m-d'))
             ->values();
+
+        Log::info('[CronogramaService] getFeriadosNacionais :: saída', [
+            'total_feriados' => $resultado->count(),
+            'feriados'       => $resultado->toArray(),
+        ]);
+
+        return $resultado;
     }
 
 
@@ -175,14 +188,30 @@ class CronogramaService
 
     public function gerarCronograma(CronogramaInputDTO $input): array
     {
+        Log::info('[CronogramaService] gerarCronograma :: entrada', [
+            'data_inicio'             => $input->dataInicio->format('Y-m-d'),
+            'data_fim'                => $input->dataFim->format('Y-m-d'),
+            'horas_por_dia'           => $input->horasPorDia,
+            'dias_semana'             => $input->diasSemana,
+            'disciplinas_selecionadas'=> $input->disciplinasSelecionadas,
+            'estudar_ferias'          => $input->estudarFerias,
+            'estudar_feriados'        => $input->estudarFeriados,
+        ]);
+
         // =====================================================================
         // FASE 1 — Cálculo do Tempo Disponível
         // =====================================================================
         $diasDisponiveis = $this->calcularDiasDisponiveis($input);
         $totalSlots      = $diasDisponiveis->count() * $input->horasPorDia;
 
+        Log::info('[CronogramaService] gerarCronograma :: FASE 1 concluída', [
+            'total_dias_disponiveis' => $diasDisponiveis->count(),
+            'total_slots'            => $totalSlots,
+        ]);
+
         // Validação de segurança: se não há dias disponíveis, não há cronograma
         if ($totalSlots === 0) {
+            Log::warning('[CronogramaService] gerarCronograma :: abortado — sem dias disponíveis');
             return [
                 'sucesso' => false,
                 'erro'    => 'Nenhum dia de estudo disponível no período selecionado. Verifique os filtros de dias da semana, feriados e férias.',
@@ -217,7 +246,17 @@ class CronogramaService
         // Slots efetivos para conteúdo das disciplinas
         $slotsConteudo = $totalSlots - $slotsSimulados - $slotsRedacao;
 
+        Log::info('[CronogramaService] gerarCronograma :: FASE 5a/5b concluída (reservas)', [
+            'meses_estudo'      => $mesesEstudo,
+            'total_simulados'   => $totalSimulados,
+            'slots_simulados'   => $slotsSimulados,
+            'semanas_estudo'    => $semanasEstudo,
+            'slots_redacao'     => $slotsRedacao,
+            'slots_conteudo'    => $slotsConteudo,
+        ]);
+
         if ($slotsConteudo <= 0) {
+            Log::warning('[CronogramaService] gerarCronograma :: abortado — slotsConteudo <= 0');
             return [
                 'sucesso' => false,
                 'erro'    => 'Tempo insuficiente para montar o cronograma. Os simulados e práticas de redação consomem todo o tempo disponível. Aumente o período ou as horas por dia.',
@@ -241,31 +280,64 @@ class CronogramaService
             $slotsConteudo
         );
 
+        Log::info('[CronogramaService] gerarCronograma :: FASE 2 concluída', [
+            'disciplinas_regulares'   => $disciplinasRegulares,
+            'distribuicao_disciplinas'=> $distribuicaoDisciplinas,
+        ]);
+
         // =====================================================================
         // FASE 3 — Priorização e Alocação dos Tópicos
         // =====================================================================
         $alocacaoTopicos = $this->priorizarEAlocarTopicos($distribuicaoDisciplinas);
 
+        Log::info('[CronogramaService] gerarCronograma :: FASE 3 concluída', [
+            'disciplinas_com_topicos' => array_map(fn($v) => [
+                'total_incluidos' => $v['total_topicos_incluidos'],
+                'total_excluidos' => $v['total_topicos_excluidos'],
+                'slots_alocados'  => $v['slots_alocados'],
+            ], $alocacaoTopicos),
+        ]);
+
         // =====================================================================
         // FASE 4 — Montagem do Calendário
         // =====================================================================
         $sequencia  = $this->montarSequenciaIntercalada($alocacaoTopicos);
+
+        Log::info('[CronogramaService] gerarCronograma :: FASE 4a concluída (sequência intercalada)', [
+            'total_slots_na_sequencia' => $sequencia->count(),
+        ]);
+
         $cronograma = $this->mapearSequenciaNoDias(
             $sequencia,
             $diasDisponiveis,
             $input->horasPorDia
         );
 
+        Log::info('[CronogramaService] gerarCronograma :: FASE 4b concluída (mapeamento nos dias)', [
+            'total_dias_no_cronograma' => $cronograma->count(),
+        ]);
+
         // =====================================================================
         // FASE 5c — Inserir simulados e redações no calendário
         // =====================================================================
         $cronograma = $this->inserirSimulados($cronograma, $diasDisponiveis, $totalSimulados, $input->horasPorDia);
+
+        Log::info('[CronogramaService] gerarCronograma :: FASE 5c simulados inseridos', [
+            'total_simulados' => $totalSimulados,
+        ]);
+
         $cronograma = $this->inserirRedacoes($cronograma, $diasDisponiveis, $semanasEstudo);
+
+        Log::info('[CronogramaService] gerarCronograma :: FASE 5c redações inseridas', [
+            'total_redacoes' => $semanasEstudo,
+        ]);
 
         // =====================================================================
         // FASE 6 — Montagem da Saída Final
         // =====================================================================
-        return $this->montarSaidaFinal(
+        Log::info('[CronogramaService] gerarCronograma :: iniciando FASE 6 (saída final)');
+
+        $saida = $this->montarSaidaFinal(
             $cronograma,
             $diasDisponiveis,
             $totalSlots,
@@ -278,6 +350,19 @@ class CronogramaService
             $semanasEstudo,
             $input
         );
+
+        Log::info('[CronogramaService] gerarCronograma :: saída final', [
+            'sucesso'                 => $saida['sucesso'] ?? false,
+            'total_dias_estudo'       => $saida['resumo']['total_dias_estudo'] ?? null,
+            'total_slots'             => $saida['resumo']['total_slots'] ?? null,
+            'slots_conteudo'          => $saida['resumo']['slots_conteudo'] ?? null,
+            'slots_simulados'         => $saida['resumo']['slots_simulados'] ?? null,
+            'slots_redacao'           => $saida['resumo']['slots_redacao'] ?? null,
+            'total_topicos_incluidos' => $saida['resumo']['total_topicos_incluidos'] ?? null,
+            'total_alertas'           => \count($saida['alertas'] ?? []),
+        ]);
+
+        return $saida;
     }
 
 
@@ -300,6 +385,14 @@ class CronogramaService
 
     private function calcularDiasDisponiveis(CronogramaInputDTO $input): Collection
     {
+        Log::info('[CronogramaService] calcularDiasDisponiveis :: entrada', [
+            'data_inicio'      => $input->dataInicio->format('Y-m-d'),
+            'data_fim'         => $input->dataFim->format('Y-m-d'),
+            'dias_semana'      => $input->diasSemana,
+            'estudar_ferias'   => $input->estudarFerias,
+            'estudar_feriados' => $input->estudarFeriados,
+        ]);
+
         // CarbonPeriod gera um iterador dia a dia — não carrega tudo em memória
         $periodo = CarbonPeriod::create($input->dataInicio, $input->dataFim);
 
@@ -360,6 +453,12 @@ class CronogramaService
             $diasDisponiveis->push($dia->format('Y-m-d'));
         }
 
+        Log::info('[CronogramaService] calcularDiasDisponiveis :: saída', [
+            'total_dias' => $diasDisponiveis->count(),
+            'primeiro'   => $diasDisponiveis->first(),
+            'ultimo'     => $diasDisponiveis->last(),
+        ]);
+
         return $diasDisponiveis;
     }
 
@@ -408,7 +507,12 @@ class CronogramaService
      */
     private function calcularMesesDeEstudo(Collection $diasDisponiveis): int
     {
+        Log::info('[CronogramaService] calcularMesesDeEstudo :: entrada', [
+            'total_dias' => $diasDisponiveis->count(),
+        ]);
+
         if ($diasDisponiveis->isEmpty()) {
+            Log::info('[CronogramaService] calcularMesesDeEstudo :: saída (vazio)', ['meses' => 0]);
             return 0;
         }
 
@@ -416,9 +520,18 @@ class CronogramaService
         $ultimo   = Carbon::parse($diasDisponiveis->last());
 
         $meses = $primeiro->diffInDays($ultimo) / 30;
+        $resultado = (int) round($meses);
+
+        Log::info('[CronogramaService] calcularMesesDeEstudo :: saída', [
+            'primeiro'     => $primeiro->format('Y-m-d'),
+            'ultimo'       => $ultimo->format('Y-m-d'),
+            'diff_em_dias' => $primeiro->diffInDays($ultimo),
+            'meses_float'  => $meses,
+            'meses_final'  => $resultado,
+        ]);
 
         // Se a fração restante é >= 15 dias, arredonda para cima
-        return (int) round($meses);
+        return $resultado;
     }
 
     /**
@@ -430,14 +543,28 @@ class CronogramaService
      */
     private function calcularSemanasDeEstudo(Collection $diasDisponiveis): int
     {
+        Log::info('[CronogramaService] calcularSemanasDeEstudo :: entrada', [
+            'total_dias' => $diasDisponiveis->count(),
+        ]);
+
         if ($diasDisponiveis->isEmpty()) {
+            Log::info('[CronogramaService] calcularSemanasDeEstudo :: saída (vazio)', ['semanas' => 0]);
             return 0;
         }
 
         $primeiro = Carbon::parse($diasDisponiveis->first());
         $ultimo   = Carbon::parse($diasDisponiveis->last());
 
-        return max(1, (int) ceil($primeiro->diffInDays($ultimo) / self::FREQUENCIA_REDACAO_DIAS));
+        $resultado = max(1, (int) ceil($primeiro->diffInDays($ultimo) / self::FREQUENCIA_REDACAO_DIAS));
+
+        Log::info('[CronogramaService] calcularSemanasDeEstudo :: saída', [
+            'primeiro'     => $primeiro->format('Y-m-d'),
+            'ultimo'       => $ultimo->format('Y-m-d'),
+            'diff_em_dias' => $primeiro->diffInDays($ultimo),
+            'semanas'      => $resultado,
+        ]);
+
+        return $resultado;
     }
 
 
@@ -469,6 +596,11 @@ class CronogramaService
 
     private function distribuirSlotsDisciplinas(array $disciplinas, int $slotsConteudo): array
     {
+        Log::info('[CronogramaService] distribuirSlotsDisciplinas :: entrada', [
+            'disciplinas'    => $disciplinas,
+            'slots_conteudo' => $slotsConteudo,
+        ]);
+
         // -----------------------------------------------------------------
         // Passo 2.1 — Calcular peso bruto de cada disciplina
         // -----------------------------------------------------------------
@@ -493,18 +625,26 @@ class CronogramaService
         // -----------------------------------------------------------------
         $pesoTotal = $pesosDisciplinas->sum('peso_bruto');
 
+        Log::info('[CronogramaService] distribuirSlotsDisciplinas :: pesos consultados do banco', [
+            'peso_total'         => $pesoTotal,
+            'disciplinas_no_banco' => $pesosDisciplinas->keys()->toArray(),
+        ]);
+
         if ($pesoTotal == 0) {
             // Fallback: se não há tópicos no banco, distribuir igualmente
-            $slotsPorDisciplina = intdiv($slotsConteudo, count($disciplinas));
+            $slotsPorDisciplina = intdiv($slotsConteudo, \count($disciplinas));
             $resultado = [];
             foreach ($disciplinas as $d) {
                 $resultado[$d] = [
                     'slots'          => $slotsPorDisciplina,
                     'peso_bruto'     => 0,
                     'total_topicos'  => 0,
-                    'fracao'         => 1 / count($disciplinas),
+                    'fracao'         => 1 / \count($disciplinas),
                 ];
             }
+            Log::warning('[CronogramaService] distribuirSlotsDisciplinas :: peso_total=0, distribuição igualitária aplicada', [
+                'slots_por_disciplina' => $slotsPorDisciplina,
+            ]);
             return $resultado;
         }
 
@@ -571,6 +711,16 @@ class CronogramaService
             unset($info['slots_exato'], $info['resto']);
         }
 
+        Log::info('[CronogramaService] distribuirSlotsDisciplinas :: saída', [
+            'distribuicao' => array_map(fn($v) => [
+                'slots'         => $v['slots'],
+                'peso_bruto'    => $v['peso_bruto'],
+                'total_topicos' => $v['total_topicos'],
+                'fracao'        => round($v['fracao'] * 100, 2) . '%',
+            ], $distribuicao),
+            'soma_slots' => array_sum(array_column($distribuicao, 'slots')),
+        ]);
+
         return $distribuicao;
     }
 
@@ -606,6 +756,10 @@ class CronogramaService
 
     private function priorizarEAlocarTopicos(array $distribuicaoDisciplinas): array
     {
+        Log::info('[CronogramaService] priorizarEAlocarTopicos :: entrada', [
+            'disciplinas' => array_keys($distribuicaoDisciplinas),
+        ]);
+
         $resultado = [];
 
         foreach ($distribuicaoDisciplinas as $slug => $infoDisciplina) {
@@ -682,6 +836,21 @@ class CronogramaService
                 $topicosComSlots = collect();
             }
 
+            Log::info("[CronogramaService] priorizarEAlocarTopicos :: disciplina '{$slug}'", [
+                'slots_disponiveis'      => $slotsDisponiveis,
+                'total_topicos_banco'    => $topicos->count(),
+                'total_topicos_incluidos'=> $topicosComSlots->count(),
+                'total_topicos_excluidos'=> $topicosExcluidos->count(),
+                'score_total'            => $scoreTotal,
+                'topicos_incluidos'      => $topicosComSlots->map(fn($t) => [
+                    'id'             => $t->id,
+                    'nome'           => $t->nome,
+                    'score'          => $t->score,
+                    'slots_alocados' => $t->slots_alocados,
+                ])->toArray(),
+                'topicos_excluidos'      => $topicosExcluidos->pluck('nome')->toArray(),
+            ]);
+
             $resultado[$slug] = [
                 'topicos_incluidos'       => $topicosComSlots,
                 'topicos_excluidos'       => $topicosExcluidos,
@@ -690,6 +859,10 @@ class CronogramaService
                 'slots_alocados'          => $infoDisciplina['slots'],
             ];
         }
+
+        Log::info('[CronogramaService] priorizarEAlocarTopicos :: saída', [
+            'disciplinas_processadas' => \count($resultado),
+        ]);
 
         return $resultado;
     }
@@ -707,6 +880,12 @@ class CronogramaService
      */
     private function distribuirSlotsProporcional(Collection $items, int $totalSlots, float $scoreTotal): Collection
     {
+        Log::info('[CronogramaService] distribuirSlotsProporcional :: entrada', [
+            'total_items'  => $items->count(),
+            'total_slots'  => $totalSlots,
+            'score_total'  => $scoreTotal,
+        ]);
+
         // Passo 1: calcular floor e resto para cada item
         $items = $items->map(function ($item) use ($totalSlots, $scoreTotal) {
             $fracao          = $item->score / $scoreTotal;
@@ -753,10 +932,22 @@ class CronogramaService
         }
 
         // Limpeza: remover campo auxiliar
-        return $items->map(function ($item) {
+        $resultado = $items->map(function ($item) {
             unset($item->_resto);
             return $item;
         });
+
+        Log::info('[CronogramaService] distribuirSlotsProporcional :: saída', [
+            'soma_slots_alocados' => $resultado->sum('slots_alocados'),
+            'items' => $resultado->map(fn($i) => [
+                'id'             => $i->id ?? null,
+                'nome'           => $i->nome ?? null,
+                'score'          => $i->score ?? null,
+                'slots_alocados' => $i->slots_alocados,
+            ])->toArray(),
+        ]);
+
+        return $resultado;
     }
 
 
@@ -799,6 +990,10 @@ class CronogramaService
      */
     private function montarSequenciaIntercalada(array $alocacaoTopicos): Collection
     {
+        Log::info('[CronogramaService] montarSequenciaIntercalada :: entrada', [
+            'disciplinas' => array_keys($alocacaoTopicos),
+        ]);
+
         $sequencia = collect();
 
         // Preparar filas de tópicos por disciplina.
@@ -851,6 +1046,10 @@ class CronogramaService
         // até acabarem as cartas de cada uma.
         // -----------------------------------------------------------------
 
+        Log::info('[CronogramaService] montarSequenciaIntercalada :: filas montadas', [
+            'slots_por_disciplina' => $slotsRest,
+        ]);
+
         $totalSlotsRestantes = array_sum($slotsRest);
 
         while ($totalSlotsRestantes > 0) {
@@ -871,6 +1070,11 @@ class CronogramaService
                 }
             }
         }
+
+        Log::info('[CronogramaService] montarSequenciaIntercalada :: saída', [
+            'total_slots_na_sequencia' => $sequencia->count(),
+            'primeiros_5_slots'        => $sequencia->take(5)->toArray(),
+        ]);
 
         return $sequencia;
     }
@@ -898,6 +1102,12 @@ class CronogramaService
         Collection $diasDisponiveis,
         int $horasPorDia
     ): Collection {
+        Log::info('[CronogramaService] mapearSequenciaNoDias :: entrada', [
+            'total_slots_sequencia' => $sequencia->count(),
+            'total_dias'            => $diasDisponiveis->count(),
+            'horas_por_dia'         => $horasPorDia,
+        ]);
+
         $cronograma       = collect();
         $indiceSequencia  = 0;
         $totalSlots       = $sequencia->count();
@@ -987,6 +1197,12 @@ class CronogramaService
             ]);
         }
 
+        Log::info('[CronogramaService] mapearSequenciaNoDias :: saída', [
+            'total_dias_no_cronograma' => $cronograma->count(),
+            'slots_consumidos'         => $indiceSequencia,
+            'slots_nao_alocados'       => $sequencia->count() - $indiceSequencia,
+        ]);
+
         return $cronograma;
     }
 
@@ -1035,7 +1251,14 @@ class CronogramaService
         int $totalSimulados,
         int $horasPorDia
     ): Collection {
+        Log::info('[CronogramaService] inserirSimulados :: entrada', [
+            'total_simulados' => $totalSimulados,
+            'horas_por_dia'   => $horasPorDia,
+            'total_dias'      => $cronograma->count(),
+        ]);
+
         if ($totalSimulados <= 0 || $cronograma->isEmpty()) {
+            Log::info('[CronogramaService] inserirSimulados :: sem simulados para inserir, retornando sem alteração');
             return $cronograma;
         }
 
@@ -1061,6 +1284,10 @@ class CronogramaService
         // -----------------------------------------------------------------
         // Substituir as aulas dos dias de simulado
         // -----------------------------------------------------------------
+        Log::info('[CronogramaService] inserirSimulados :: dias de simulado identificados', [
+            'dias_simulado' => $diasSimulado->toArray(),
+        ]);
+
         $datasSimulado = $diasSimulado->toArray();
         $numSimulado   = 1;
 
@@ -1106,7 +1333,13 @@ class CronogramaService
         Collection $diasDisponiveis,
         int $totalRedacoes
     ): Collection {
+        Log::info('[CronogramaService] inserirRedacoes :: entrada', [
+            'total_redacoes' => $totalRedacoes,
+            'total_dias'     => $cronograma->count(),
+        ]);
+
         if ($totalRedacoes <= 0 || $cronograma->isEmpty()) {
+            Log::info('[CronogramaService] inserirRedacoes :: sem redações para inserir, retornando sem alteração');
             return $cronograma;
         }
 
@@ -1125,6 +1358,11 @@ class CronogramaService
             $diasRedacao[] = $diasDisponiveis[$i];
             $numRedacao++;
         }
+
+        Log::info('[CronogramaService] inserirRedacoes :: dias de redação identificados', [
+            'intervalo'    => $intervalo,
+            'dias_redacao' => $diasRedacao,
+        ]);
 
         // -----------------------------------------------------------------
         // Substituir o último slot dos dias de redação
@@ -1185,6 +1423,17 @@ class CronogramaService
         int $semanasEstudo,
         CronogramaInputDTO $input
     ): array {
+        Log::info('[CronogramaService] montarSaidaFinal :: entrada', [
+            'total_slots'      => $totalSlots,
+            'slots_conteudo'   => $slotsConteudo,
+            'slots_simulados'  => $slotsSimulados,
+            'slots_redacao'    => $slotsRedacao,
+            'total_simulados'  => $totalSimulados,
+            'semanas_estudo'   => $semanasEstudo,
+            'total_dias'       => $diasDisponiveis->count(),
+            'disciplinas'      => array_keys($distribuicaoDisciplinas),
+        ]);
+
         $alertas = [];
 
         // -----------------------------------------------------------------
@@ -1252,6 +1501,10 @@ class CronogramaService
             $totalSimulados,
             $semanasEstudo
         );
+
+        Log::info('[CronogramaService] montarSaidaFinal :: alertas gerados', [
+            'alertas' => $alertas,
+        ]);
 
         // -----------------------------------------------------------------
         // Montar saída final
