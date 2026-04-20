@@ -25,6 +25,8 @@ class Cronograma extends Model
         'disciplinas_selecionadas',
         'minutos_estudo_por_dia',
         'status',
+        'ativo',
+        'cronograma_json',
     ];
 
     /**
@@ -48,7 +50,9 @@ class Cronograma extends Model
         'disciplinas_selecionadas' => 'array',
         'estudar_feriados' => 'boolean',
         'tirar_ferias' => 'boolean',
+        'ativo' => 'boolean',
         'minutos_estudo_por_dia' => 'integer',
+        'cronograma_json' => 'array',
     ];
 
     /**

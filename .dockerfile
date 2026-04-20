@@ -19,7 +19,8 @@ RUN docker-php-ext-install -j"$(nproc)" \
     zip \
     mbstring \
     exif \
-    pcntl
+    pcntl \
+    calendar
 
 # Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer

@@ -139,7 +139,7 @@ class CronogramaService
 
             // --- Feriados móveis (baseados na Páscoa) ---
             // easter_date() retorna timestamp Unix da Páscoa para o ano dado
-            $pascoa = Carbon::createFromTimestamp(easter_date($ano));
+            $pascoa = Carbon::createFromTimestamp(\easter_date($ano));
 
             $moveis = [
                 $pascoa->copy()->subDays(47)->format('Y-m-d'), // Carnaval (segunda)
@@ -316,6 +316,30 @@ class CronogramaService
         Log::info('[CronogramaService] gerarCronograma :: FASE 4b concluída (mapeamento nos dias)', [
             'total_dias_no_cronograma' => $cronograma->count(),
         ]);
+
+        // =====================================================================
+        // FASE 4c — Preencher slots vazios com Revisões por Repetição Espaçada
+        // =====================================================================
+        //
+        // JUSTIFICATIVA:
+        // Após distribuir o conteúdo novo (slotsConteudo) nos dias disponíveis,
+        // pode restar dias com aulas vazias ou incompletas. Isso ocorre quando
+        // slotsConteudo < total_dias × horasPorDia (ex: muitas disciplinas com
+        // poucos tópicos = slots esgotados antes do período terminar).
+        //
+        // Em vez de deixar esses slots ociosos, preenchemos com revisões dos
+        // tópicos de maior score já alocados. Isso implementa o princípio de
+        // Repetição Espaçada (Ebbinghaus), que comprovadamente aumenta a
+        // retenção — a cada revisão, a curva do esquecimento é "reiniciada"
+        // e o aluno consolida o aprendizado para o longo prazo.
+        //
+        $cronograma = $this->preencherSlotsVaziosComRevisoes(
+            $cronograma,
+            $alocacaoTopicos,
+            $input->horasPorDia
+        );
+
+        Log::info('[CronogramaService] gerarCronograma :: FASE 4c concluída (revisões preenchidas)');
 
         // =====================================================================
         // FASE 5c — Inserir simulados e redações no calendário
@@ -762,24 +786,30 @@ class CronogramaService
 
         $resultado = [];
 
+        // -----------------------------------------------------------------
+        // Passo 3.0 — Carregar todos os tópicos de uma vez para evitar N+1
+        // Como 'topicos' é uma View que faz UNION, consultá-la 13x trava o DB.
+        // -----------------------------------------------------------------
+        $todosTopicos = DB::table('topicos')
+            ->whereIn('disciplina_slug', array_keys($distribuicaoDisciplinas))
+            ->get()
+            ->groupBy('disciplina_slug');
+
         foreach ($distribuicaoDisciplinas as $slug => $infoDisciplina) {
             $slotsDisponiveis = $infoDisciplina['slots'];
 
             // -----------------------------------------------------------------
             // Passo 3.1 — Buscar tópicos da disciplina e calcular score
             // -----------------------------------------------------------------
-            $topicos = DB::table('topicos')
-                ->where('disciplina_slug', $slug)
-                ->get()
-                ->map(function ($topico) {
-                    // Cálculo do score ponderado
-                    $topico->score = round(
-                        ($topico->relevancia * self::PESO_RELEVANCIA)
-                        + ($topico->recorrencia * self::PESO_RECORRENCIA),
-                        2
-                    );
-                    return $topico;
-                });
+            $topicos = $todosTopicos->get($slug, collect())->map(function ($topico) {
+                // Cálculo do score ponderado
+                $topico->score = round(
+                    ($topico->relevancia * self::PESO_RELEVANCIA)
+                    + ($topico->recorrencia * self::PESO_RECORRENCIA),
+                    2
+                );
+                return $topico;
+            });
 
             // -----------------------------------------------------------------
             // Passo 3.2 — Ordenar tópicos por score decrescente
@@ -1201,6 +1231,184 @@ class CronogramaService
             'total_dias_no_cronograma' => $cronograma->count(),
             'slots_consumidos'         => $indiceSequencia,
             'slots_nao_alocados'       => $sequencia->count() - $indiceSequencia,
+        ]);
+
+        return $cronograma;
+    }
+
+
+    /*
+    |==========================================================================
+    | FASE 4c — PREENCHER SLOTS VAZIOS COM REVISÕES
+    |==========================================================================
+    |
+    | Objetivo: Detectar dias com aulas vazias ou incompletas no calendário
+    | já montado e preenchê-los com sessões de revisão dos tópicos de maior
+    | score de cada disciplina.
+    |
+    | Estratégia:
+    |   1. Varrer o cronograma procurando dias com menos aulas que horasPorDia
+    |   2. Montar uma fila de revisão com os top-tópicos de cada disciplina
+    |      (os mesmos da alocação original, em ordem decrescente de score)
+    |   3. Preencher os slots faltantes usando o mesmo round-robin intercalado
+    |      da Fase 4a, mas com tipo = 'revisao'
+    |
+    | Regras:
+    |   - Não substitui aulas que já existem (apenas preenche vazios)
+    |   - Mantém intercalação de disciplinas (round-robin)
+    |   - Max MAX_DISCIPLINA_POR_DIA da mesma disciplina por dia
+    |     (contando com as aulas de conteúdo já alocadas)
+    |   - Tópico de revisão: o mais importante da disciplina (maior score)
+    |
+    */
+
+    /**
+     * Preenche slots vazios ou incompletos com sessões de revisão inteligente.
+     *
+     * @param  Collection  $cronograma      Calendário já com conteúdo novo
+     * @param  array       $alocacaoTopicos Resultado da Fase 3 (tópicos por disciplina)
+     * @param  int         $horasPorDia     Máximo de slots por dia
+     * @return Collection  Calendário com slots preenchidos
+     */
+    private function preencherSlotsVaziosComRevisoes(
+        Collection $cronograma,
+        array $alocacaoTopicos,
+        int $horasPorDia
+    ): Collection {
+        // -----------------------------------------------------------------
+        // Verificar se há slots vazios para preencher
+        // -----------------------------------------------------------------
+        $totalVazios = $cronograma->sum(fn(array $dia) => $horasPorDia - count($dia['aulas']));
+
+        Log::info('[CronogramaService] preencherSlotsVaziosComRevisoes :: entrada', [
+            'total_slots_vazios' => $totalVazios,
+            'total_dias'         => $cronograma->count(),
+        ]);
+
+        if ($totalVazios === 0) {
+            Log::info('[CronogramaService] preencherSlotsVaziosComRevisoes :: sem slots vazios, retornando sem alteração');
+            return $cronograma;
+        }
+
+        // -----------------------------------------------------------------
+        // Montar fila de revisão: top-tópicos de cada disciplina por score
+        // -----------------------------------------------------------------
+        // Para cada disciplina, pega os tópicos incluídos já ordenados por
+        // score (a Fase 3 já os ordenou). A fila é cíclica — quando esgota,
+        // volta ao início (os tópicos mais importantes são revisados mais vezes).
+        // -----------------------------------------------------------------
+        $filasRevisao  = [];
+        $slotsRevisao  = []; // índice atual na fila de cada disciplina
+
+        // Ordena disciplinas pelo total de slots (desc) — mesma lógica do round-robin
+        $disciplinasOrdenadas = collect($alocacaoTopicos)
+            ->sortByDesc('slots_alocados')
+            ->keys()
+            ->toArray();
+
+        foreach ($disciplinasOrdenadas as $slug) {
+            $topicos = $alocacaoTopicos[$slug]['topicos_incluidos'];
+
+            if ($topicos->isEmpty()) {
+                continue;
+            }
+
+            // Fila = tópicos ordenados por score desc (já estão assim da Fase 3)
+            $filasRevisao[$slug]  = $topicos->values();
+            $slotsRevisao[$slug]  = 0; // ponteiro cíclico
+        }
+
+        if (empty($filasRevisao)) {
+            Log::warning('[CronogramaService] preencherSlotsVaziosComRevisoes :: sem tópicos para revisão');
+            return $cronograma;
+        }
+
+        // -----------------------------------------------------------------
+        // Preencher os slots vazios dia a dia
+        // -----------------------------------------------------------------
+        $disciplinasDisponiveis = array_keys($filasRevisao);
+        $numDisciplinas         = count($disciplinasDisponiveis);
+        $ponteiroDisciplina     = 0; // round-robin global entre disciplinas
+        $totalRevisoes          = 0;
+
+        $cronograma = $cronograma->map(function (array $dia) use (
+            $horasPorDia,
+            $filasRevisao,
+            &$slotsRevisao,
+            $disciplinasDisponiveis,
+            $numDisciplinas,
+            &$ponteiroDisciplina,
+            &$totalRevisoes
+        ) {
+            $aulasExistentes = count($dia['aulas']);
+            $slotsVazios     = $horasPorDia - $aulasExistentes;
+
+            if ($slotsVazios <= 0) {
+                return $dia; // dia completo, nada a fazer
+            }
+
+            // Contar quantas aulas de cada disciplina já existem neste dia
+            // para respeitar o limite MAX_DISCIPLINA_POR_DIA
+            $contadorDia = [];
+            foreach ($dia['aulas'] as $aula) {
+                $d = $aula['disciplina'];
+                $contadorDia[$d] = ($contadorDia[$d] ?? 0) + 1;
+            }
+
+            // Preencher os slots vazios com revisões
+            $slotNum = $aulasExistentes + 1;
+
+            for ($i = 0; $i < $slotsVazios; $i++) {
+                // Tentar encontrar uma disciplina disponível neste slot
+                // (respeitando MAX_DISCIPLINA_POR_DIA)
+                $tentativas  = 0;
+                $disciplinaEscolhida = null;
+
+                while ($tentativas < $numDisciplinas) {
+                    $slug = $disciplinasDisponiveis[$ponteiroDisciplina % $numDisciplinas];
+                    $ponteiroDisciplina++;
+                    $tentativas++;
+
+                    $contAtual = $contadorDia[$slug] ?? 0;
+
+                    if ($contAtual < self::MAX_DISCIPLINA_POR_DIA) {
+                        $disciplinaEscolhida = $slug;
+                        break;
+                    }
+                }
+
+                if ($disciplinaEscolhida === null) {
+                    // Todas as disciplinas atingiram o limite no dia —
+                    // aceita a violação para não deixar slot vazio
+                    $disciplinaEscolhida = $disciplinasDisponiveis[$ponteiroDisciplina % $numDisciplinas];
+                    $ponteiroDisciplina++;
+                }
+
+                // Pegar o próximo tópico da fila cíclica da disciplina
+                $fila       = $filasRevisao[$disciplinaEscolhida];
+                $idx        = $slotsRevisao[$disciplinaEscolhida] % $fila->count();
+                $topico     = $fila[$idx];
+                $slotsRevisao[$disciplinaEscolhida]++;
+
+                $dia['aulas'][] = [
+                    'slot'       => $slotNum,
+                    'disciplina' => $disciplinaEscolhida,
+                    'topico_id'  => $topico->id,
+                    'topico'     => $topico->nome,
+                    'tipo'       => 'revisao',
+                    'score'      => $topico->score,
+                ];
+
+                $contadorDia[$disciplinaEscolhida] = ($contadorDia[$disciplinaEscolhida] ?? 0) + 1;
+                $slotNum++;
+                $totalRevisoes++;
+            }
+
+            return $dia;
+        });
+
+        Log::info('[CronogramaService] preencherSlotsVaziosComRevisoes :: saída', [
+            'total_revisoes_inseridas' => $totalRevisoes,
         ]);
 
         return $cronograma;
