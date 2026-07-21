@@ -1,5 +1,39 @@
 {
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_FILE_PATHS\" | grep -qE '\\.(php)$'; then ./vendor/bin/pint --quiet $CLAUDE_FILE_PATHS && ./vendor/bin/phpstan analyse --no-progress $CLAUDE_FILE_PATHS 2>&1 || echo 'PINT_OR_PHPSTAN_FAILED'; fi"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_COMMAND\" | grep -qE '(rm -rf /|drop database|migrate:fresh.*--force|git push.*--force.*main)'; then echo 'BLOCKED: comando perigoso'; exit 2; fi"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "osascript -e 'display notification \"Claude terminou em $(basename $PWD)\" with title \"Claude Code\"'"
+          }
+        ]
+      }
+    ]
   }
 }
